@@ -16,6 +16,7 @@
 package com.squareup.sqldelight.generating
 
 import com.intellij.openapi.module.ModuleUtil
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.squareup.sqldelight.SqliteParser
@@ -108,8 +109,10 @@ class TableGenerator constructor(parse: ParseElement, fileName: String, modulePa
   companion object {
     fun create(file: PsiFile): TableGenerator {
       val parse = file.childOfType<ParseElement>()!!
-      return TableGenerator(parse, file.virtualFile.path.relativePath(parse),
-          ModuleUtil.findModuleForPsiElement(file)!!.moduleFile!!.parent.path + File.separatorChar)
+      return TableGenerator(parse, file.virtualFile.platformSpecificPath().relativePath(parse),
+          ModuleUtil.findModuleForPsiElement(file)!!.moduleFile!!.parent.platformSpecificPath() + File.separatorChar)
     }
   }
 }
+
+fun VirtualFile.platformSpecificPath() = path.replace('/', File.separatorChar)

@@ -26,6 +26,7 @@ import com.intellij.psi.PsiManager
 import com.intellij.psi.impl.source.tree.java.PsiReferenceExpressionImpl
 import com.squareup.sqldelight.SqliteCompiler
 import com.squareup.sqldelight.SqliteParser
+import com.squareup.sqldelight.generating.platformSpecificPath
 import com.squareup.sqldelight.lang.SqliteTokenTypes.RULE_ELEMENT_TYPES
 import com.squareup.sqldelight.model.Column
 import com.squareup.sqldelight.model.SqlStmt
@@ -45,7 +46,7 @@ class SqliteGotoDeclarationHandler : GotoDeclarationHandler {
 
     // Only handle files under the generated sqlite directory.
     val sourceRoot = projectManager.fileIndex.getSourceRootForFile(elementFile)
-    if (sourceRoot == null || !sourceRoot.path.endsWith(SqliteCompiler.OUTPUT_DIRECTORY)) {
+    if (sourceRoot == null || !sourceRoot.platformSpecificPath().endsWith(SqliteCompiler.OUTPUT_DIRECTORY)) {
       return emptyArray()
     }
 
