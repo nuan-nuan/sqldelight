@@ -100,6 +100,78 @@ class ResolverTests {
         .hasSelected("column2", "temp_table2")
   }
 
+  @Test
+  fun cursorInSelect() {
+    /*
+    SELECT *, |
+    FROM test;
+
+    -- should return all columns from test.
+     */
+  }
+
+  @Test
+  fun cursorInSelectJoinTable() {
+    /*
+    SELECT *, |
+    FROM test
+    LEFT JOIN test2
+
+    -- should return all columns from test and test2.
+     */
+  }
+
+  @Test
+  fun cursorInExpression() {
+    /*
+    SELECT *
+    FROM test
+    WHERE |
+
+    -- should return all columns from test and test2.
+     */
+  }
+
+  @Test
+  fun cursorAfterErrorDoesNothing() {
+    /*
+    SELECT *
+    FRM test
+    WHERE |
+
+    -- should return nothing. Write better code, bro.
+     */
+  }
+
+  @Test
+  fun cursorInsideSubquerySelect() {
+    /*
+    SELECT *
+    FROM test
+    JOIN (
+      SELECT |
+      FROM test2
+    )
+
+    -- should return all columns from test2
+     */
+  }
+
+  @Test
+  fun cursorInsideSubqueryExpression() {
+    /*
+    SELECT *
+    FROM test
+    JOIN (
+      SELECT *
+      FROM test2
+      WHERE |
+    )
+
+    -- should return all columns from test and test2.
+     */
+  }
+
   private fun assertThat(values: List<Value>) = ValuesSubject(values)
 
   private fun SqliteParser.ParseContext.statementWithName(name: String): ParserRuleContext {

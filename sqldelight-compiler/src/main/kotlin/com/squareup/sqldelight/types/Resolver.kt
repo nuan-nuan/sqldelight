@@ -47,7 +47,10 @@ internal class Resolver(
   /**
    * Take an insert statement and return the types being inserted.
    */
-  fun resolve(insertStmt: SqliteParser.Insert_stmtContext, availableValues: List<Value>): List<Value> {
+  fun resolve(
+      insertStmt: SqliteParser.Insert_stmtContext,
+      availableValues: List<Value>
+  ): List<Value> {
     val resolver: Resolver
     if (insertStmt.with_clause() != null) {
       resolver = withResolver(insertStmt.with_clause())
@@ -70,8 +73,14 @@ internal class Resolver(
 
   /**
    * Take a select statement and return the selected columns.
+   *
+   * If cursorPosition is specified, this function will return the columns available at the cursor
+   * position.
    */
-  fun resolve(selectStmt: SqliteParser.Select_stmtContext): List<Value> {
+  fun resolve(
+      selectStmt: SqliteParser.Select_stmtContext,
+      cursorPosition: Int = selectStmt.stop.stopIndex
+  ): List<Value> {
     val resolver: Resolver
     if (selectStmt.K_WITH() != null) {
       resolver = Resolver(selectStmt.common_table_expression()
@@ -82,11 +91,22 @@ internal class Resolver(
       resolver = this
     }
 
-    val selectedFromFirst = resolver.resolve(selectStmt.select_or_values(0), selectStmt)
+    val selectedFromFirst = resolver.resolve(selectStmt.select_or_values(0), selectStmt,
+        cursorPosition = cursorPosition)
+
+    if (cursorPosition >= selectStmt.select_or_values(0).start.startIndex
+        && cursorPosition < selectStmt.select_or_values(0).stop.stopIndex) {
+      return selectedFromFirst
+    }
 
     // Resolve other compound select statements and verify they have equivalent columns.
     selectStmt.select_or_values().drop(1).forEach {
-      val compoundValues = resolver.resolve(it)
+      val compoundValues = resolver.resolve(it, cursorPosition = cursorPosition)
+
+      if (cursorPosition >= it.start.startIndex && cursorPosition < it.stop.stopIndex) {
+        return compoundValues
+      }
+
       if (compoundValues.size != selectedFromFirst.size) {
         throw SqlitePluginException(it, "Unexpected number of columns in compound statement " +
             "found: ${compoundValues.size} expected: ${selectedFromFirst.size}")
@@ -109,7 +129,8 @@ internal class Resolver(
    */
   fun resolve(
       selectOrValues: SqliteParser.Select_or_valuesContext,
-      parentSelect: SqliteParser.Select_stmtContext? = null
+      parentSelect: SqliteParser.Select_stmtContext? = null,
+      cursorPosition: Int = selectOrValues.stop.stopIndex
   ): List<Value> {
     val availableValues: List<Value>
     if (selectOrValues.K_VALUES() != null) {
