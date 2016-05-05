@@ -16,6 +16,7 @@
 package com.squareup.sqldelight.intellij.lang
 
 import com.intellij.lang.Language
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.module.ModuleUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
@@ -78,19 +79,25 @@ internal class SqlDelightFileViewProvider(virtualFile: VirtualFile, language: La
           parsed,
           virtualFile.nameWithoutExtension,
           virtualFile.getPlatformSpecificPath().relativePath(parsed),
-          ModuleUtil.findModuleForPsiElement(file)!!.moduleFile!!.parent.getPlatformSpecificPath() + File.separatorChar
+          (ModuleUtil.findModuleForPsiElement(file)!!.moduleFile?.parent?.getPlatformSpecificPath() ?: "") + File.separatorChar
       )
 
       if (file.status is Status.Success) {
         val generatedFile = localFileSystem.findFileByIoFile((file.status as Status.Success).generatedFile)
-        generatedFile!!.refresh(true, false)
+        if (generatedFile == null) {
+          Logger.getInstance(SqlDelightFileViewProvider::class.java)
+              .debug("Failed to find the generated file for ${file.virtualFile.path}, " +
+                  "it currently is ${file.generatedFile?.virtualFile?.path}")
+          return@parseThen
+        }
+        generatedFile.refresh(true, false)
         if (generatedFile != file.generatedFile?.virtualFile) {
           file.generatedFile?.delete()
         }
         file.generatedFile = psiManager.findFile(generatedFile)
       }
-    }, onError = {
-      removeFile(virtualFile, fromEdit)
+    }, onError = { parsed, errors ->
+      removeFile(virtualFile, fromEdit, SymbolTable(parsed, virtualFile, errors))
     })
   }
 
@@ -102,8 +109,15 @@ internal class SqlDelightFileViewProvider(virtualFile: VirtualFile, language: La
 
     internal var symbolTable = SymbolTable()
 
-    fun removeFile(file: VirtualFile, fromEdit: Boolean = false) {
+    fun removeFile(
+        file: VirtualFile,
+        fromEdit: Boolean = false,
+        replacementTable: SymbolTable? = null
+    ) {
       symbolTable -= file
+      if (replacementTable != null) {
+        symbolTable += replacementTable
+      }
       dependencies.entrySet().forEach {
         it.value.removeAll { it.virtualFile == file }
       }

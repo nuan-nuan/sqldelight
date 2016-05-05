@@ -1,0 +1,13 @@
+CREATE TABLE <caret1>test1 (
+  <caret2>column1 INTEGER NOT NULL PRIMARY KEY
+);
+
+view_1:
+CREATE VIEW view1 AS
+SELECT column1 AS alias1
+FROM test1;
+
+-- This select has a syntax error but should not break completion.
+some_select:
+SELECT *
+FRM test1;

@@ -19,13 +19,14 @@ import com.squareup.sqldelight.SqliteParser
 import com.squareup.sqldelight.SqlitePluginException
 import com.squareup.sqldelight.util.BiMultiMap
 import com.squareup.sqldelight.util.emptyBiMultiMap
+import com.squareup.sqldelight.util.hasTokenIn
+import org.antlr.v4.runtime.Token
 import java.util.LinkedHashMap
 
 class SymbolTable constructor(
     internal val tables: Map<String, SqliteParser.Create_table_stmtContext> = emptyMap(),
     internal val views: Map<String, SqliteParser.Create_view_stmtContext> = emptyMap(),
     internal val commonTables: Map<String, SqliteParser.Common_table_expressionContext> = emptyMap(),
-    internal val withClauses: Map<String, Pair<SqliteParser.Cte_table_nameContext, SqliteParser.Select_stmtContext>> = emptyMap(),
     internal val indexes: Map<String, SqliteParser.Create_index_stmtContext> = emptyMap(),
     internal val triggers: Map<String, SqliteParser.Create_trigger_stmtContext> = emptyMap(),
     internal val tableTags: BiMultiMap<Any, String> = emptyBiMultiMap(),
@@ -36,17 +37,18 @@ class SymbolTable constructor(
 ) {
   constructor(
       parsed: SqliteParser.ParseContext,
-      tag: Any
+      tag: Any,
+      errors: List<Token> = emptyList()
   ) : this(
-      if (parsed.sql_stmt_list().create_table_stmt() != null) {
-        linkedMapOf(parsed.sql_stmt_list().create_table_stmt().table_name().text
-            to parsed.sql_stmt_list().create_table_stmt())
-      } else {
-        linkedMapOf()
-      },
+      listOf(parsed.sql_stmt_list().create_table_stmt())
+        .filterNotNull()
+        .filter { !errors.hasTokenIn(it) }
+        .map { it.table_name().text to it }
+        .toMap(),
       parsed.sql_stmt_list().sql_stmt()
           .map { it.create_view_stmt() }
           .filterNotNull()
+          .filter { !errors.hasTokenIn(it) }
           .groupBy { it.view_name().text }
           .map {
             val (viewName, views) = it
@@ -59,6 +61,7 @@ class SymbolTable constructor(
       indexes = parsed.sql_stmt_list().sql_stmt()
           .map { it.create_index_stmt() }
           .filterNotNull()
+          .filter { !errors.hasTokenIn(it) }
           .groupBy { it.index_name().text }
           .map {
             val (indexName, indexes) = it
@@ -71,6 +74,7 @@ class SymbolTable constructor(
       triggers = parsed.sql_stmt_list().sql_stmt()
           .map { it.create_trigger_stmt() }
           .filterNotNull()
+          .filter { !errors.hasTokenIn(it) }
           .groupBy { it.trigger_name().text }
           .map {
             val (triggerName, triggers) = it
@@ -91,20 +95,11 @@ class SymbolTable constructor(
       tag = tag
   )
 
-  internal constructor(
-      withClauses: Pair<SqliteParser.Cte_table_nameContext, SqliteParser.Select_stmtContext>,
-      tag: Any
-  ) : this (
-      withClauses = mapOf(withClauses.first.text to withClauses),
-      tag = tag
-  )
-
   operator fun minus(tag: Any): SymbolTable {
     return SymbolTable(
         tables.filter { !(tableTags[tag]?.contains(it.key) ?: false) },
         views.filter { !(viewTags[tag]?.contains(it.key) ?: false) },
         commonTables,
-        withClauses,
         indexes.filter { !(indexTags[tag]?.contains(it.key) ?: false) },
         triggers.filter { !(triggerTags[tag]?.contains(it.key) ?: false) },
         tableTags - tag,
@@ -125,7 +120,6 @@ class SymbolTable constructor(
     checkKeys(views.keys, other, "View")
 
     checkKeys(commonTables.keys, other, "Common Table")
-    checkKeys(withClauses.keys, other, "Common Table")
 
     val indexes = LinkedHashMap(this.indexes)
     indexTags.filter { it.key == other.tag }.flatMap { it.value }.forEach { indexes.remove(it) }
@@ -145,7 +139,6 @@ class SymbolTable constructor(
         tables + other.tables,
         views + other.views,
         this.commonTables + other.commonTables,
-        this.withClauses + other.withClauses,
         indexes + other.indexes,
         triggers + other.triggers,
         this.tableTags + BiMultiMap(other.tag to other.tables.map { it.key }),
@@ -168,9 +161,16 @@ class SymbolTable constructor(
       throw SqlitePluginException(other.commonTables[it]!!.table_name(),
           "$existingText already defined with name $it")
     }
-    keys.intersect(other.withClauses.keys).forEach {
-      throw SqlitePluginException(other.withClauses[it]!!.first,
-          "$existingText already defined with name $it")
-    }
+  }
+
+  override fun toString(): String {
+    var result = "\n";
+    tableTags.forEach({
+      result += "${it.key} -> ${it.value}(\n\t${it.value.map { tables[it]?.text }.joinToString(",\n\t")}\n)\n"
+    })
+    viewTags.forEach({
+      result += "${it.key} -> ${it.value}(\n\t${it.value.map { views[it]?.text }.joinToString(",\n\t")}\n)\n"
+    })
+    return result
   }
 }
